@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Absensi SD YPU 2026</title>
+<title>Aplikasi Absensi Siswa SD YPU</title>
 <style>
   :root {
     --bg:#f4f7fb;
@@ -119,7 +119,19 @@
     cursor:pointer;
   }
   .day.active { background:#eff6ff; border-color:#93c5fd; color:#1d4ed8; }
+  .day:disabled, .day.future { opacity:.45; cursor:not-allowed; }
   .day .n { font-size:18px; font-weight:800; margin-top:4px; }
+  .rownum {
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    min-height:48px;
+    border:1px solid var(--line);
+    background:#fff;
+    border-radius:16px;
+    font-weight:800;
+    font-size:16px;
+  }
   .stats { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-top:12px; }
   .stat { border-radius:16px; padding:12px 10px; text-align:center; border:1px solid var(--line); }
   .stat .num { font-size:22px; font-weight:900; }
@@ -265,17 +277,6 @@
     align-items:center;
   }
   .roster-row-grid .input { padding:10px 12px; border-radius:14px; }
-  .rownum {
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    min-height:44px;
-    border:1px solid var(--line);
-    border-radius:14px;
-    background:#fff;
-    font-weight:800;
-    color:var(--text);
-  }
   .checkbox {
     display:flex;
     align-items:center;
@@ -347,7 +348,7 @@
   <div class="card">
     <div class="top">
       <div>
-        <h1>Absensi SD YPU 2026</h1>
+        <h1>Aplikasi Absensi Siswa SD YPU</h1>
         <p class="sub">Pilih kelas, isi status, lalu simpan saat selesai.</p>
       </div>
       <div class="actions-top">
@@ -408,7 +409,6 @@
       <button class="sheetbtn amber" id="allS">Semua Sakit</button>
       <button class="sheetbtn blue" id="allI">Semua Izin</button>
       <button class="sheetbtn rose" id="allA">Semua Alpha</button>
-      <button class="sheetbtn full" id="clearDay">Hapus Absensi Hari Ini</button>
       <button class="sheetbtn full blue" id="saveBtn2">Simpan Absensi</button>
     </div>
     <div class="small" style="margin-top:12px">
@@ -501,6 +501,10 @@ function startWeek(d) {
   x.setDate(x.getDate() - day);
   x.setHours(0,0,0,0);
   return x;
+}
+
+function isSelectableDate(iso) {
+  return parseLocalDate(iso) <= parseLocalDate(todayIso());
 }
 
 function prettyDate(d) {
@@ -628,9 +632,9 @@ function syncSaveButtons() {
 
 function canGoNextWeek() {
   const currentStart = startWeek(parseLocalDate(state.date));
-  const currentEnd = new Date(currentStart);
-  currentEnd.setDate(currentEnd.getDate() + 6);
-  return currentEnd < parseLocalDate(todayIso());
+  const nextStart = new Date(currentStart);
+  nextStart.setDate(nextStart.getDate() + 7);
+  return nextStart <= parseLocalDate(todayIso());
 }
 
 function syncWeekNavButtons() {
@@ -642,6 +646,7 @@ function syncWeekNavButtons() {
 
 function renderTop() {
   const dateObj = parseLocalDate(state.date);
+  const today = todayIso();
   el("#dateText").innerHTML = `<span>📅</span><span>${prettyDate(dateObj)}</span>`;
   const wk = startWeek(dateObj);
   el("#week").innerHTML = Array.from({ length: 7 }, (_, i) => {
@@ -649,11 +654,16 @@ function renderTop() {
     d.setDate(d.getDate() + i);
     const iso = todayIso(d);
     const active = iso === state.date ? "active" : "";
-    return `<button class="day ${active}" data-date="${iso}"><div>${prettyShort(d).split(",")[0]}</div><div class="n">${d.getDate()}</div></button>`;
+    const selectable = isSelectableDate(iso);
+    const disabled = selectable ? "" : "disabled";
+    const extraClass = selectable ? "" : " future";
+    const title = selectable ? "" : "Tanggal setelah hari ini tidak bisa dipilih";
+    return `<button class="day ${active}${extraClass}" data-date="${iso}" ${disabled} title="${title}"><div>${prettyShort(d).split(",")[0]}</div><div class="n">${d.getDate()}</div></button>`;
   }).join("");
 
   el("#week").querySelectorAll("[data-date]").forEach(btn => {
     btn.addEventListener("click", async () => {
+      if (btn.disabled) return;
       await changeDate(btn.dataset.date);
     });
   });
@@ -708,7 +718,7 @@ function renderList() {
 function render() {
   renderTop();
   renderList();
-  document.title = `${classLabel(state.classCode)} - Absensi SD YPU 2026`;
+  document.title = `${classLabel(state.classCode)} - Aplikasi Absensi Siswa SD YPU`;
 }
 
 function setAttendanceLocal(studentId, status) {
@@ -895,15 +905,10 @@ async function saveRoster() {
   }
 }
 
-async function moveRoster() {
+async function copyRoster() {
   const toClassCode = el("#copyTargetSelect").value;
   if (!toClassCode || toClassCode === state.classCode) {
     setToast("Pilih kelas tujuan yang berbeda");
-    return;
-  }
-  const selectedCount = state.rosterRows.filter(row => row.active && row.id).length;
-  if (selectedCount === 0) {
-    setToast("Centang siswa yang akan dipindah");
     return;
   }
   try {
@@ -933,22 +938,6 @@ async function deleteClassRoster() {
   }
 }
 
-async function clearDay() {
-  try {
-    await apiPost("clearAttendance", {
-      classCode: state.classCode,
-      date: state.date,
-    });
-    state.students.forEach(student => {
-      delete state.attendance[String(student.id)];
-    });
-    state.dirtyAttendance = false;
-    render();
-    setToast("Absensi hari ini dihapus");
-  } catch (error) {
-    showError(error);
-  }
-}
 
 function showError(error) {
   console.error(error);
@@ -1003,7 +992,6 @@ el("#allH").addEventListener("click", () => bulkSet("H"));
 el("#allS").addEventListener("click", () => bulkSet("S"));
 el("#allI").addEventListener("click", () => bulkSet("I"));
 el("#allA").addEventListener("click", () => bulkSet("A"));
-el("#clearDay").addEventListener("click", clearDay);
 el("#saveBtn").addEventListener("click", saveAttendance);
 el("#saveBtn2").addEventListener("click", saveAttendance);
 
@@ -1017,13 +1005,14 @@ el("#addStudentBtn").addEventListener("click", () => {
     nisn: "",
     name: "",
     active: 1,
+    studentOrder: state.rosterRows.length + 1,
   });
   state.dirtyRoster = true;
   renderRoster();
 });
 
 el("#saveRosterBtn").addEventListener("click", () => saveRoster().catch(showError));
-el("#copyRosterBtn").addEventListener("click", () => moveRoster().catch(showError));
+el("#copyRosterBtn").addEventListener("click", () => copyRoster().catch(showError));
 
 init();
 </script>

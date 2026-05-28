@@ -127,7 +127,7 @@ async function saveRoster(env, classCode, students) {
     }))
     .filter(row => row.name.length > 0 || row.id);
 
-  for (const [index, row] of normalized.entries()) {
+  normalized.forEach((row, index) => {
     const studentOrder = index + 1;
     if (row.id) {
       statements.push(
@@ -145,7 +145,7 @@ async function saveRoster(env, classCode, students) {
         ).bind(classCode, studentOrder, row.nisn, row.name, row.active)
       );
     }
-  }
+  });
 
   if (statements.length > 0) {
     await env.DB.batch(statements);
@@ -153,9 +153,32 @@ async function saveRoster(env, classCode, students) {
   return statements.length;
 }
 
+async function resequenceClassStudents(env, classCode) {
+  const rows = await env.DB.prepare(
+    `SELECT id
+     FROM students
+     WHERE class_code = ?
+     ORDER BY student_order, id`
+  ).bind(classCode).all();
+
+  const statements = (rows.results || []).map((row, index) =>
+    env.DB.prepare(
+      `UPDATE students
+       SET student_order = ?, updated_at = CURRENT_TIMESTAMP
+       WHERE id = ? AND class_code = ?`
+    ).bind(index + 1, row.id, classCode)
+  );
+
+  if (statements.length > 0) {
+    await env.DB.batch(statements);
+  }
+}
+
 async function moveRoster(env, fromClassCode, toClassCode) {
+  if (fromClassCode === toClassCode) return 0;
+
   const source = await env.DB.prepare(
-    `SELECT id, nisn, name, student_order AS studentOrder
+    `SELECT id, student_order AS studentOrder
      FROM students
      WHERE class_code = ? AND active = 1
      ORDER BY student_order, id`
@@ -164,20 +187,23 @@ async function moveRoster(env, fromClassCode, toClassCode) {
   const rows = source.results || [];
   if (rows.length === 0) return 0;
 
-  const targetMaxRow = await env.DB.prepare(
+  const maxTargetOrderRow = await env.DB.prepare(
     `SELECT COALESCE(MAX(student_order), 0) AS maxOrder
      FROM students
      WHERE class_code = ?`
   ).bind(toClassCode).first();
-  let nextOrder = Number(targetMaxRow?.maxOrder || 0) + 1;
+  let nextOrder = Number(maxTargetOrderRow?.maxOrder || 0) + 1;
 
-  const statements = rows.map((row) => env.DB.prepare(
-    `UPDATE students
-     SET class_code = ?, student_order = ?, updated_at = CURRENT_TIMESTAMP
-     WHERE id = ? AND class_code = ?`
-  ).bind(toClassCode, nextOrder++, row.id, fromClassCode));
+  const statements = rows.map((row) =>
+    env.DB.prepare(
+      `UPDATE students
+       SET class_code = ?, student_order = ?, updated_at = CURRENT_TIMESTAMP
+       WHERE id = ? AND class_code = ?`
+    ).bind(toClassCode, nextOrder++, row.id, fromClassCode)
+  );
 
   await env.DB.batch(statements);
+  await resequenceClassStudents(env, fromClassCode);
   return rows.length;
 }
 
@@ -255,7 +281,7 @@ export async function onRequest(context) {
         return json({ ok: true, saved });
       }
 
-      if (actionPost === "moveRoster" || actionPost === "copyRoster") {
+      if (actionPost === "copyRoster" || actionPost === "moveRoster") {
         const fromClassCode = normalizeClassCode(payload.fromClassCode);
         const toClassCode = normalizeClassCode(payload.toClassCode);
         if (!isValidClassCode(fromClassCode) || !isValidClassCode(toClassCode)) {
