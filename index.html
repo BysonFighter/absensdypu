@@ -337,14 +337,13 @@
     <div class="top">
       <div>
         <h1>Absensi SD YPU 2026</h1>
-        <p class="sub">Data tersimpan ke database D1 Cloudflare. Pilih kelas, isi status, lalu simpan saat selesai.</p>
+        <p class="sub">Pilih kelas, isi status, lalu simpan saat selesai.</p>
       </div>
       <div class="actions-top">
         <button class="iconbtn" id="openRoster">👥 Kelola Siswa</button>
       </div>
     </div>
     <div class="meta">
-      <div class="pill">Cloudflare Pages + D1</div>
       <div class="pill" id="classCount">12 kelas</div>
       <div class="pill" id="studentCount">0 siswa aktif</div>
     </div>
@@ -472,8 +471,17 @@ const state = {
   dirtyRoster: false,
 };
 
+function pad2(n) {
+  return String(n).padStart(2, "0");
+}
+
 function todayIso(d = new Date()) {
-  return d.toISOString().slice(0,10);
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+function parseLocalDate(iso) {
+  const [year, month, day] = String(iso || "").split("-").map(Number);
+  return new Date(year, (month || 1) - 1, day || 1);
 }
 
 function startWeek(d) {
@@ -608,12 +616,10 @@ function syncSaveButtons() {
 }
 
 function canGoNextWeek() {
-  const currentStart = startWeek(new Date(state.date + "T00:00:00"));
-  const nextStart = new Date(currentStart);
-  nextStart.setDate(nextStart.getDate() + 7);
-  const nextEnd = new Date(nextStart);
-  nextEnd.setDate(nextEnd.getDate() + 6);
-  return todayIso(nextEnd) <= todayIso();
+  const currentStart = startWeek(parseLocalDate(state.date));
+  const currentEnd = new Date(currentStart);
+  currentEnd.setDate(currentEnd.getDate() + 6);
+  return currentEnd < parseLocalDate(todayIso());
 }
 
 function syncWeekNavButtons() {
@@ -624,7 +630,7 @@ function syncWeekNavButtons() {
 }
 
 function renderTop() {
-  const dateObj = new Date(state.date + "T00:00:00");
+  const dateObj = parseLocalDate(state.date);
   el("#dateText").innerHTML = `<span>📅</span><span>${prettyDate(dateObj)}</span>`;
   const wk = startWeek(dateObj);
   el("#week").innerHTML = Array.from({ length: 7 }, (_, i) => {
@@ -986,14 +992,14 @@ el("#rosterClassSelect").addEventListener("change", async () => {
 });
 
 el("#prevDay").addEventListener("click", async () => {
-  const d = new Date(state.date + "T00:00:00");
+  const d = parseLocalDate(state.date);
   d.setDate(d.getDate() - 7);
   await changeDate(todayIso(d));
 });
 
 el("#nextDay").addEventListener("click", async () => {
   if (!canGoNextWeek()) return;
-  const d = new Date(state.date + "T00:00:00");
+  const d = parseLocalDate(state.date);
   d.setDate(d.getDate() + 7);
   await changeDate(todayIso(d));
 });
