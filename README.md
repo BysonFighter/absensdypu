@@ -1,4 +1,4 @@
-# Aplikasi Absensi Siswa SD YPU
+# Absensi SD YPU 2026
 
 Project ini memakai Cloudflare Pages + D1.
 
@@ -7,7 +7,6 @@ Project ini memakai Cloudflare Pages + D1.
 - Absensi disimpan manual lewat tombol **Simpan Absensi**
 - Kelola siswa per kelas
 - Kelas 6A/6B memiliki menu hapus kelas
-- Tanggal setelah hari ini tidak bisa dipilih
 - Data absensi tersimpan di D1 Cloudflare
 
 ## Deploy

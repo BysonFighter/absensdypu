@@ -119,30 +119,30 @@ async function saveRoster(env, classCode, students) {
   if (!Array.isArray(students)) return 0;
   const statements = [];
   const normalized = students
-    .map((row, index) => ({
+    .map((row) => ({
       id: row?.id ? Number(row.id) : null,
       nisn: String(row?.nisn || "").trim(),
       name: String(row?.name || "").trim(),
       active: row?.active === false || row?.active === 0 || row?.active === "0" ? 0 : 1,
-      studentOrder: Number.isFinite(Number(row?.studentOrder)) ? Number(row.studentOrder) : index + 1,
     }))
     .filter(row => row.name.length > 0 || row.id);
 
-  for (const row of normalized) {
+  for (const [index, row] of normalized.entries()) {
+    const studentOrder = index + 1;
     if (row.id) {
       statements.push(
         env.DB.prepare(
           `UPDATE students
            SET nisn = ?, name = ?, student_order = ?, active = ?, updated_at = CURRENT_TIMESTAMP
            WHERE id = ? AND class_code = ?`
-        ).bind(row.nisn, row.name, row.studentOrder, row.active, row.id, classCode)
+        ).bind(row.nisn, row.name, studentOrder, row.active, row.id, classCode)
       );
     } else if (row.name) {
       statements.push(
         env.DB.prepare(
           `INSERT INTO students (class_code, student_order, nisn, name, active)
            VALUES (?, ?, ?, ?, ?)`
-        ).bind(classCode, row.studentOrder, row.nisn, row.name, row.active)
+        ).bind(classCode, studentOrder, row.nisn, row.name, row.active)
       );
     }
   }
@@ -153,55 +153,29 @@ async function saveRoster(env, classCode, students) {
   return statements.length;
 }
 
-async function moveRoster(env, fromClassCode, toClassCode, students = null) {
-  const sourceRows = Array.isArray(students) && students.length > 0
-    ? students
-    : (await env.DB.prepare(
-        `SELECT id, nisn, name, student_order AS studentOrder, active
-         FROM students
-         WHERE class_code = ? AND active = 1
-         ORDER BY student_order, id`
-      ).bind(fromClassCode).all()).results || [];
+async function moveRoster(env, fromClassCode, toClassCode) {
+  const source = await env.DB.prepare(
+    `SELECT id, nisn, name, student_order AS studentOrder
+     FROM students
+     WHERE class_code = ? AND active = 1
+     ORDER BY student_order, id`
+  ).bind(fromClassCode).all();
 
-  const rows = sourceRows
-    .map((row, index) => ({
-      id: row?.id ? Number(row.id) : null,
-      nisn: String(row?.nisn || "").trim(),
-      name: String(row?.name || "").trim(),
-      studentOrder: Number.isFinite(Number(row?.studentOrder)) ? Number(row.studentOrder) : index + 1,
-      active: row?.active === false || row?.active === 0 || row?.active === "0" ? 0 : 1,
-    }))
-    .filter(row => row.active === 1 && row.name.length > 0);
-
+  const rows = source.results || [];
   if (rows.length === 0) return 0;
 
-  const statements = [
-    env.DB.prepare(
-      `DELETE FROM students
-       WHERE class_code = ?`
-    ).bind(toClassCode),
-    env.DB.prepare(
-      `DELETE FROM attendance
-       WHERE class_code = ?`
-    ).bind(toClassCode),
-  ];
+  const targetMaxRow = await env.DB.prepare(
+    `SELECT COALESCE(MAX(student_order), 0) AS maxOrder
+     FROM students
+     WHERE class_code = ?`
+  ).bind(toClassCode).first();
+  let nextOrder = Number(targetMaxRow?.maxOrder || 0) + 1;
 
-  for (const row of rows) {
-    if (row.id) {
-      statements.push(
-        env.DB.prepare(
-          `DELETE FROM students
-           WHERE class_code = ? AND id = ?`
-        ).bind(fromClassCode, row.id)
-      );
-    }
-    statements.push(
-      env.DB.prepare(
-        `INSERT INTO students (class_code, student_order, nisn, name, active)
-         VALUES (?, ?, ?, ?, 1)`
-      ).bind(toClassCode, row.studentOrder, row.nisn || "", row.name || "")
-    );
-  }
+  const statements = rows.map((row) => env.DB.prepare(
+    `UPDATE students
+     SET class_code = ?, student_order = ?, updated_at = CURRENT_TIMESTAMP
+     WHERE id = ? AND class_code = ?`
+  ).bind(toClassCode, nextOrder++, row.id, fromClassCode));
 
   await env.DB.batch(statements);
   return rows.length;
@@ -287,7 +261,7 @@ export async function onRequest(context) {
         if (!isValidClassCode(fromClassCode) || !isValidClassCode(toClassCode)) {
           return badRequest("Kode kelas sumber atau tujuan tidak valid.");
         }
-        const moved = await moveRoster(env, fromClassCode, toClassCode, payload.students || []);
+        const moved = await moveRoster(env, fromClassCode, toClassCode);
         return json({ ok: true, moved });
       }
 
