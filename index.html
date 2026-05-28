@@ -119,6 +119,7 @@
     cursor:pointer;
   }
   .day.active { background:#eff6ff; border-color:#93c5fd; color:#1d4ed8; }
+  .day:disabled { opacity:.45; cursor:not-allowed; }
   .day .n { font-size:18px; font-weight:800; margin-top:4px; }
   .stats { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-top:12px; }
   .stat { border-radius:16px; padding:12px 10px; text-align:center; border:1px solid var(--line); }
@@ -397,7 +398,6 @@
       <button class="sheetbtn amber" id="allS">Semua Sakit</button>
       <button class="sheetbtn blue" id="allI">Semua Izin</button>
       <button class="sheetbtn rose" id="allA">Semua Alpha</button>
-      <button class="sheetbtn full" id="clearDay">Hapus Absensi Hari Ini</button>
       <button class="sheetbtn full blue" id="saveBtn2">Simpan Absensi</button>
     </div>
     <div class="small" style="margin-top:12px">
@@ -631,6 +631,7 @@ function syncWeekNavButtons() {
 
 function renderTop() {
   const dateObj = parseLocalDate(state.date);
+  const today = todayIso();
   el("#dateText").innerHTML = `<span>📅</span><span>${prettyDate(dateObj)}</span>`;
   const wk = startWeek(dateObj);
   el("#week").innerHTML = Array.from({ length: 7 }, (_, i) => {
@@ -638,11 +639,15 @@ function renderTop() {
     d.setDate(d.getDate() + i);
     const iso = todayIso(d);
     const active = iso === state.date ? "active" : "";
-    return `<button class="day ${active}" data-date="${iso}"><div>${prettyShort(d).split(",")[0]}</div><div class="n">${d.getDate()}</div></button>`;
+    const isFuture = iso > today;
+    const disabled = isFuture ? "disabled" : "";
+    const title = isFuture ? "Tanggal setelah hari ini tidak bisa dipilih" : "";
+    return `<button class="day ${active}" data-date="${iso}" ${disabled} title="${title}"><div>${prettyShort(d).split(",")[0]}</div><div class="n">${d.getDate()}</div></button>`;
   }).join("");
 
   el("#week").querySelectorAll("[data-date]").forEach(btn => {
     btn.addEventListener("click", async () => {
+      if (btn.disabled) return;
       await changeDate(btn.dataset.date);
     });
   });
@@ -943,22 +948,6 @@ async function deleteClassRoster() {
   }
 }
 
-async function clearDay() {
-  try {
-    await apiPost("clearAttendance", {
-      classCode: state.classCode,
-      date: state.date,
-    });
-    state.students.forEach(student => {
-      delete state.attendance[String(student.id)];
-    });
-    state.dirtyAttendance = false;
-    render();
-    setToast("Absensi hari ini dihapus");
-  } catch (error) {
-    showError(error);
-  }
-}
 
 function showError(error) {
   console.error(error);
@@ -1013,7 +1002,6 @@ el("#allH").addEventListener("click", () => bulkSet("H"));
 el("#allS").addEventListener("click", () => bulkSet("S"));
 el("#allI").addEventListener("click", () => bulkSet("I"));
 el("#allA").addEventListener("click", () => bulkSet("A"));
-el("#clearDay").addEventListener("click", clearDay);
 el("#saveBtn").addEventListener("click", saveAttendance);
 el("#saveBtn2").addEventListener("click", saveAttendance);
 
