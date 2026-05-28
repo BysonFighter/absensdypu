@@ -1,0 +1,8 @@
+name = "absensi-sd-ypu"
+compatibility_date = "2026-05-28"
+pages_build_output_dir = "."
+
+[[d1_databases]]
+binding = "DB"
+database_name = "absenypu"
+database_id = "665ff1f8-b152-4d5b-8ef9-3267c38434e1"
