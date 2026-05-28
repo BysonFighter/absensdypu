@@ -1,4 +1,4 @@
-# Absensi SD YPU 2026
+# Aplikasi Absensi Siswa SD YPU
 
 Project ini memakai Cloudflare Pages + D1.
 

@@ -153,15 +153,28 @@ async function saveRoster(env, classCode, students) {
   return statements.length;
 }
 
-async function copyRoster(env, fromClassCode, toClassCode) {
-  const source = await env.DB.prepare(
-    `SELECT nisn, name, student_order AS studentOrder, active
-     FROM students
-     WHERE class_code = ? AND active = 1
-     ORDER BY student_order, id`
-  ).bind(fromClassCode).all();
+async function moveRoster(env, fromClassCode, toClassCode, students = null) {
+  const sourceRows = Array.isArray(students) && students.length > 0
+    ? students
+    : (await env.DB.prepare(
+        `SELECT id, nisn, name, student_order AS studentOrder, active
+         FROM students
+         WHERE class_code = ? AND active = 1
+         ORDER BY student_order, id`
+      ).bind(fromClassCode).all()).results || [];
 
-  const rows = source.results || [];
+  const rows = sourceRows
+    .map((row, index) => ({
+      id: row?.id ? Number(row.id) : null,
+      nisn: String(row?.nisn || "").trim(),
+      name: String(row?.name || "").trim(),
+      studentOrder: Number.isFinite(Number(row?.studentOrder)) ? Number(row.studentOrder) : index + 1,
+      active: row?.active === false || row?.active === 0 || row?.active === "0" ? 0 : 1,
+    }))
+    .filter(row => row.active === 1 && row.name.length > 0);
+
+  if (rows.length === 0) return 0;
+
   const statements = [
     env.DB.prepare(
       `DELETE FROM students
@@ -173,14 +186,22 @@ async function copyRoster(env, fromClassCode, toClassCode) {
     ).bind(toClassCode),
   ];
 
-  rows.forEach((row, index) => {
+  for (const row of rows) {
+    if (row.id) {
+      statements.push(
+        env.DB.prepare(
+          `DELETE FROM students
+           WHERE class_code = ? AND id = ?`
+        ).bind(fromClassCode, row.id)
+      );
+    }
     statements.push(
       env.DB.prepare(
         `INSERT INTO students (class_code, student_order, nisn, name, active)
          VALUES (?, ?, ?, ?, 1)`
-      ).bind(toClassCode, row.studentOrder || index + 1, row.nisn || "", row.name || "")
+      ).bind(toClassCode, row.studentOrder, row.nisn || "", row.name || "")
     );
-  });
+  }
 
   await env.DB.batch(statements);
   return rows.length;
@@ -260,14 +281,14 @@ export async function onRequest(context) {
         return json({ ok: true, saved });
       }
 
-      if (actionPost === "copyRoster") {
+      if (actionPost === "moveRoster" || actionPost === "copyRoster") {
         const fromClassCode = normalizeClassCode(payload.fromClassCode);
         const toClassCode = normalizeClassCode(payload.toClassCode);
         if (!isValidClassCode(fromClassCode) || !isValidClassCode(toClassCode)) {
           return badRequest("Kode kelas sumber atau tujuan tidak valid.");
         }
-        const copied = await copyRoster(env, fromClassCode, toClassCode);
-        return json({ ok: true, copied });
+        const moved = await moveRoster(env, fromClassCode, toClassCode, payload.students || []);
+        return json({ ok: true, moved });
       }
 
       if (actionPost === "clearAttendance") {

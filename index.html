@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Absensi SD YPU 2026</title>
+<title>Aplikasi Absensi Siswa SD YPU</title>
 <style>
   :root {
     --bg:#f4f7fb;
@@ -337,7 +337,7 @@
   <div class="card">
     <div class="top">
       <div>
-        <h1>Absensi SD YPU 2026</h1>
+        <h1>Aplikasi Absensi Siswa SD YPU</h1>
         <p class="sub">Pilih kelas, isi status, lalu simpan saat selesai.</p>
       </div>
       <div class="actions-top">
@@ -426,13 +426,13 @@
           <select class="select" id="rosterClassSelect"></select>
         </div>
         <div class="field">
-          <label>Salin roster ke kelas</label>
-          <select class="select" id="copyTargetSelect"></select>
+          <label>Siswa pindah ke kelas</label>
+          <select class="select" id="moveTargetSelect"></select>
         </div>
         <div class="inline-actions" style="justify-content:flex-end">
           <button class="btn secondary" id="addStudentBtn">+ Tambah</button>
-          <button class="btn warn" id="copyRosterBtn">Salin</button>
-          <button class="btn primary" id="saveRosterBtn">Simpan Roster</button>
+          <button class="btn warn" id="moveRosterBtn">Pindah Kelas</button>
+          <button class="btn primary" id="saveRosterBtn">Simpan</button>
         </div>
       </div>
       <div class="class-delete-wrap" id="classDeleteWrap"></div>
@@ -565,12 +565,12 @@ function buildClassOptions(selectEl, current) {
 function syncClassSelectors() {
   buildClassOptions(el("#classSelect"), state.classCode);
   buildClassOptions(el("#rosterClassSelect"), state.classCode);
-  el("#copyTargetSelect").innerHTML = state.classes.map(item => `
+  el("#moveTargetSelect").innerHTML = state.classes.map(item => `
     <option value="${item.code}" ${item.code !== state.classCode ? "" : "disabled"}>${item.name}</option>
   `).join("");
 
   const target = state.classes.find(c => c.code !== state.classCode)?.code || state.classCode;
-  el("#copyTargetSelect").value = target;
+  el("#moveTargetSelect").value = target;
 }
 
 async function loadClasses() {
@@ -702,7 +702,7 @@ function renderList() {
 function render() {
   renderTop();
   renderList();
-  document.title = `${classLabel(state.classCode)} - Absensi SD YPU 2026`;
+  document.title = `${classLabel(state.classCode)} - Aplikasi Absensi Siswa SD YPU`;
 }
 
 function setAttendanceLocal(studentId, status) {
@@ -807,11 +807,11 @@ function rosterRowTemplate(row = {}, idx = 0) {
 
 async function loadRosterEditor() {
   el("#rosterClassSelect").value = state.classCode;
-  el("#copyTargetSelect").innerHTML = state.classes.map(item => `
+  el("#moveTargetSelect").innerHTML = state.classes.map(item => `
     <option value="${item.code}" ${item.code === state.classCode ? "disabled" : ""}>${item.name}</option>
   `).join("");
   const target = state.classes.find(c => c.code !== state.classCode)?.code || state.classCode;
-  el("#copyTargetSelect").value = target;
+  el("#moveTargetSelect").value = target;
 
   const data = await apiGet({ action: "students", classCode: state.classCode, includeInactive: "1" });
   state.rosterRows = (data.students || []).map((row, idx) => ({
@@ -914,21 +914,26 @@ async function saveRoster() {
   }
 }
 
-async function copyRoster() {
-  const toClassCode = el("#copyTargetSelect").value;
+async function moveRoster() {
+  const toClassCode = el("#moveTargetSelect").value;
   if (!toClassCode || toClassCode === state.classCode) {
     setToast("Pilih kelas tujuan yang berbeda");
     return;
   }
+  const rows = collectRosterRows().filter(row => row.active === 1);
+  if (rows.length === 0) {
+    setToast("Pilih minimal satu siswa aktif untuk dipindahkan");
+    return;
+  }
   try {
-    await apiPost("copyRoster", {
+    await apiPost("moveRoster", {
       fromClassCode: state.classCode,
       toClassCode,
+      students: rows,
     });
-    setToast(`Roster disalin ke ${classLabel(toClassCode)}`);
-    if (toClassCode === state.classCode) {
-      await loadRosterEditor();
-    }
+    setToast(`Siswa dipindah ke ${classLabel(toClassCode)}`);
+    await loadClassData();
+    await loadRosterEditor();
   } catch (error) {
     showError(error);
   }
@@ -1022,7 +1027,7 @@ el("#addStudentBtn").addEventListener("click", () => {
 });
 
 el("#saveRosterBtn").addEventListener("click", () => saveRoster().catch(showError));
-el("#copyRosterBtn").addEventListener("click", () => copyRoster().catch(showError));
+el("#moveRosterBtn").addEventListener("click", () => moveRoster().catch(showError));
 
 init();
 </script>
