@@ -46,6 +46,10 @@
     cursor:pointer;
     font-size:14px;
   }
+  .iconbtn:disabled {
+    opacity:.45;
+    cursor:not-allowed;
+  }
   .select, .input {
     cursor:text;
     outline:none;
@@ -337,7 +341,6 @@
       </div>
       <div class="actions-top">
         <button class="iconbtn" id="openRoster">👥 Kelola Siswa</button>
-        <button class="iconbtn" id="openSheet">⚙</button>
       </div>
     </div>
     <div class="meta">
@@ -604,6 +607,22 @@ function syncSaveButtons() {
   el("#saveBtn2").textContent = label;
 }
 
+function canGoNextWeek() {
+  const currentStart = startWeek(new Date(state.date + "T00:00:00"));
+  const nextStart = new Date(currentStart);
+  nextStart.setDate(nextStart.getDate() + 7);
+  const nextEnd = new Date(nextStart);
+  nextEnd.setDate(nextEnd.getDate() + 6);
+  return todayIso(nextEnd) <= todayIso();
+}
+
+function syncWeekNavButtons() {
+  const prevBtn = el("#prevDay");
+  const nextBtn = el("#nextDay");
+  if (prevBtn) prevBtn.disabled = false;
+  if (nextBtn) nextBtn.disabled = !canGoNextWeek();
+}
+
 function renderTop() {
   const dateObj = new Date(state.date + "T00:00:00");
   el("#dateText").innerHTML = `<span>📅</span><span>${prettyDate(dateObj)}</span>`;
@@ -631,6 +650,7 @@ function renderTop() {
   `).join("");
 
   syncSaveButtons();
+  syncWeekNavButtons();
 }
 
 function renderList() {
@@ -967,18 +987,18 @@ el("#rosterClassSelect").addEventListener("change", async () => {
 
 el("#prevDay").addEventListener("click", async () => {
   const d = new Date(state.date + "T00:00:00");
-  d.setDate(d.getDate() - 1);
+  d.setDate(d.getDate() - 7);
   await changeDate(todayIso(d));
 });
 
 el("#nextDay").addEventListener("click", async () => {
+  if (!canGoNextWeek()) return;
   const d = new Date(state.date + "T00:00:00");
-  d.setDate(d.getDate() + 1);
+  d.setDate(d.getDate() + 7);
   await changeDate(todayIso(d));
 });
 
 el("#q").addEventListener("input", renderList);
-el("#openSheet").addEventListener("click", openSheet);
 el("#openSheet2").addEventListener("click", openSheet);
 el("#closeSheet").addEventListener("click", closeSheet);
 el("#overlay").addEventListener("click", (e) => { if (e.target === el("#overlay")) closeSheet(); });
