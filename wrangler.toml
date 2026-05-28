@@ -4,5 +4,5 @@ pages_build_output_dir = "."
 
 [[d1_databases]]
 binding = "DB"
-database_name = "absensi_sd"
+database_name = "absenypu"
 database_id = "665ff1f8-b152-4d5b-8ef9-3267c38434e1"
