@@ -1,5 +1,5 @@
 name = "absensi-sd-ypu"
-compatibility_date = "2026-05-29"
+compatibility_date = "2026-05-28"
 pages_build_output_dir = "."
 
 [[d1_databases]]
